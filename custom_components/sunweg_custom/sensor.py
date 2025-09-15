@@ -127,7 +127,7 @@ async def async_setup_entry(
             state_class=SensorStateClass.MEASUREMENT,
             icon="mdi:flash",
             value_fn=lambda total, resumo: _parse_numeric(
-                total.get("potencia_ativa_total"), {"kW": 1.0, "MW": 1000.0}
+                total.get("potencia_ativa_total"), {"W": 0.001, "kW": 1.0, "MW": 1000.0}
             ),
         ),
         SunWegSensorDescription(
@@ -231,7 +231,7 @@ async def async_setup_entry(
             device_class=SensorDeviceClass.POWER,
             state_class=SensorStateClass.MEASUREMENT,
             icon="mdi:flash",
-            value_fn=lambda total, resumo: _parse_numeric(resumo.get("potencia"), None),
+            value_fn=lambda total, resumo: _parse_numeric(resumo.get("potencia"), {"W": 0.001, "kW": 1.0, "MW": 1000.0}),
         ),
         SunWegSensorDescription(
             key="plant_capacity",
