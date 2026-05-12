@@ -14,6 +14,7 @@ DOMAIN: str = "sunweg_custom"
 
 CONF_USERNAME: str = "username"
 CONF_PASSWORD: str = "password"
+CONF_AUTH_TOKEN: str = "auth_token"
 CONF_PLANT_ID: str = "plant_id"
 CONF_PLANT_NAME: str = "plant_name"
 

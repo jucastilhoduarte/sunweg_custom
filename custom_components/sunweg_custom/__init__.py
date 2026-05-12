@@ -26,6 +26,7 @@ from .const import (
     DOMAIN,
     CONF_USERNAME,
     CONF_PASSWORD,
+    CONF_AUTH_TOKEN,
     CONF_PLANT_ID,
     DEFAULT_SCAN_INTERVAL,
 )
@@ -38,13 +39,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     username: str = entry.data[CONF_USERNAME]
     password: str = entry.data[CONF_PASSWORD]
+    auth_token: str = entry.data.get(CONF_AUTH_TOKEN, "")
     plant_id: str = entry.data[CONF_PLANT_ID]
 
     session = aiohttp_client.async_get_clientsession(hass)
-    api = SunWegAPI(session, username, password)
+
+    async def async_store_token(token: str) -> None:
+        """Persist refreshed tokens so Home Assistant restarts reuse them."""
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_AUTH_TOKEN: token,
+            },
+        )
+
+    api = SunWegAPI(
+        session,
+        username or None,
+        password or None,
+        token=auth_token or None,
+        token_updated_callback=async_store_token,
+    )
     try:
-        # Authenticate before starting the coordinator to ensure the token is available
-        await api.async_login()
+        # Reuse a stored/manual token when available. If only credentials were
+        # configured, request and persist a fresh token.
+        if not auth_token:
+            await api.async_login()
     except SunWegAuthError as err:
         _LOGGER.error("SunWEG authentication error: %s", err)
         raise ConfigEntryNotReady from err

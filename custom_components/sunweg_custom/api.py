@@ -9,8 +9,8 @@ automatically injects required headers on each request.
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Dict, Optional
 
 import aiohttp
@@ -31,11 +31,24 @@ class SunWegAuthError(SunWegAPIError):
 class SunWegAPI:
     """Asynchronous client for interacting with the SunWEG REST API."""
 
-    def __init__(self, session: aiohttp.ClientSession, username: str, password: str) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        token: Optional[str] = None,
+        token_updated_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+    ) -> None:
         self._session = session
         self._username = username
         self._password = password
-        self._token: Optional[str] = None
+        self._token: Optional[str] = token
+        self._token_updated_callback = token_updated_callback
+
+    @property
+    def token(self) -> Optional[str]:
+        """Return the current API token."""
+        return self._token
 
     async def async_login(self) -> None:
         """Authenticate with the API and store the returned token.
@@ -44,16 +57,14 @@ class SunWegAPI:
             SunWegAuthError: If authentication fails.
             SunWegAPIError: If an unexpected error occurs.
         """
+        if not self._username or not self._password:
+            raise SunWegAuthError("Credentials are required to request a new token")
+
         url = f"{API_BASE_URL}/login/autenticacao"
         payload = {
             "usuario": self._username,
             "senha": self._password,
-            # The following fields mirror those observed in the HAR capture.  The
-            # service appears to accept a login without CAPTCHA tokens when
-            # originating from the mobile/HA integration context; should that
-            # assumption prove false the integration can be extended to prompt
-            # users for a captcha token.
-            "rememberMe": False,
+            "rememberMe": True,
             "aceito": False,
         }
         headers = {
@@ -71,9 +82,11 @@ class SunWegAPI:
             raise SunWegAPIError(f"Error communicating with SunWEG API: {err}") from err
 
         if not data.get("success") or "token" not in data:
-            _LOGGER.error("Authentication response missing token: %s", data)
+            _LOGGER.error("Authentication response did not include a token")
             raise SunWegAuthError("Invalid credentials or unexpected response")
-        self._token = data["token"]
+        self._token = str(data["token"])
+        if self._token_updated_callback:
+            await self._token_updated_callback(self._token)
         _LOGGER.debug("Logged in successfully, token set")
 
     def _auth_headers(self) -> Dict[str, str]:
@@ -106,6 +119,10 @@ class SunWegAPI:
             async with self._session.get(url, headers=headers, params=params) as resp:
                 # If unauthorized, refresh the token once and retry
                 if resp.status == 401:
+                    if not self._username or not self._password:
+                        raise SunWegAuthError(
+                            "Stored token has expired and no credentials are available"
+                        )
                     _LOGGER.warning("Token appears to have expired, attempting reauthentication")
                     await self.async_login()
                     headers = self._auth_headers()

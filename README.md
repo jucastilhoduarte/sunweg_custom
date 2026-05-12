@@ -6,8 +6,8 @@ Este repositório contém uma integração **não oficial** para o [Home Assist
 
 ## Recursos
 
-- **Fluxo de configuração via UI**: configure a integração diretamente na interface do Home Assistant, informando usuário e senha do SunWEG e selecionando a usina desejada.
-- **Atualização automática de token**: a integração obtém e renova o token de acesso, dispensando a troca manual no `configuration.yaml`.
+- **Fluxo de configuração via UI**: configure a integração diretamente na interface do Home Assistant, informando usuário/senha ou um token de sessão do SunWEG e selecionando a usina desejada.
+- **Reaproveitamento de token**: a integração armazena o token de acesso e reutiliza a sessão em reinicializações do Home Assistant. Quando usuário/senha também foram configurados, ela tenta obter um novo token com "permanecer conectado" ativo se a sessão expirar.
 - **Sensores agregados** (todas as usinas da conta):
   - Energia gerada hoje, no mês e no total (`kWh`)
   - Potência ativa total (`kW`)
@@ -31,7 +31,7 @@ Este repositório contém uma integração **não oficial** para o [Home Assist
 1. Adicione este repositório no HACS como um repositório personalizado de tipo *Integration*.
 2. Instale a integração **SunWEG** pelo HACS.
 3. Reinicie o Home Assistant.
-4. Acesse **Configurações → Dispositivos e Serviços → Adicionar Integração**, busque por **SunWEG** e siga o assistente para informar usuário, senha e escolher a usina.
+4. Acesse **Configurações → Dispositivos e Serviços → Adicionar Integração**, busque por **SunWEG** e siga o assistente para informar usuário/senha ou token de sessão e escolher a usina.
 
 > **Observação sobre o ícone:** os arquivos `logo.png` e `icon.png` presentes na raiz deste repositório são usados pelo HACS para exibir um logotipo personalizado. Eles não precisam ser copiados para o Home Assistant; basta mantê‑los no seu GitHub.
 
@@ -43,7 +43,8 @@ Este repositório contém uma integração **não oficial** para o [Home Assist
 
 ## Como funciona
 
-- **Autenticação:** a integração usa os endpoints de login da API SunWEG para autenticar com seu e‑mail e senha. O token obtido é armazenado e reutilizado até expirar.
+- **Autenticação:** a integração pode usar os endpoints de login da API SunWEG para autenticar com seu e-mail e senha, ou reutilizar um token obtido após login manual no portal. Nas chamadas de dados, o valor é enviado no header `X-Auth-Token-Update`.
+- **Login manual:** se o portal exigir verificação humana no login, faça o login normalmente no navegador com **permanecer conectado** marcado e copie o valor do header `X-Auth-Token-Update` de uma chamada para `https://api.sunweg.net/v2/...` nas ferramentas de desenvolvedor. Cole esse valor no campo **Token de sessão** do fluxo de configuração.
 - **Coordenador de dados:** um [DataUpdateCoordinator](https://developers.home-assistant.io/docs/data_update_coordinator_index/) gerencia as chamadas periódicas à API (intervalo padrão de 5 minutos), tratando erros de conexão e renovação do token.
 - **Criação de sensores:** após a primeira atualização, a integração cria entidades do tipo `sensor` com base nas métricas retornadas pela API, utilizando classes de dispositivo e unidades apropriadas.
 

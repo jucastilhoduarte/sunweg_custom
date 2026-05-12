@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Configure SunWEG",
-        "description": "Enter your SunWEG account credentials.",
+        "description": "Enter your SunWEG credentials or paste a token obtained after a manual SunWEG portal login. For manual tokens, use the X-Auth-Token-Update header value.",
         "data": {
           "username": "Email",
-          "password": "Password"
+          "password": "Password",
+          "auth_token": "Session token"
         }
       },
       "select_plant": {
@@ -18,8 +19,9 @@
       }
     },
     "error": {
-      "auth": "Invalid username or password.",
+      "auth": "Invalid credentials or expired session token.",
       "cannot_connect": "Could not connect to SunWEG.",
+      "missing_auth": "Enter email and password or a session token.",
       "no_plants": "No plants found in your account.",
       "unknown": "Unknown error occurred."
     }

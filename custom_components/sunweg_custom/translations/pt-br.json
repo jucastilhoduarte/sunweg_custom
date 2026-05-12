@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Configurar SunWEG",
-        "description": "Informe suas credenciais do SunWEG.",
+        "description": "Informe e-mail/senha ou cole um token obtido após login manual no portal SunWEG. Para token manual, use o valor do header X-Auth-Token-Update.",
         "data": {
           "username": "E-mail",
-          "password": "Senha"
+          "password": "Senha",
+          "auth_token": "Token de sessão"
         }
       },
       "select_plant": {
@@ -18,8 +19,9 @@
       }
     },
     "error": {
-      "auth": "Usuário ou senha inválidos.",
+      "auth": "Credenciais inválidas ou token de sessão expirado.",
       "cannot_connect": "Não foi possível conectar ao SunWEG.",
+      "missing_auth": "Informe e-mail e senha ou um token de sessão.",
       "no_plants": "Nenhuma usina foi encontrada na sua conta.",
       "unknown": "Ocorreu um erro desconhecido."
     }

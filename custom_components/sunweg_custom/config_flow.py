@@ -28,6 +28,7 @@ from .const import (
     DOMAIN,
     CONF_USERNAME,
     CONF_PASSWORD,
+    CONF_AUTH_TOKEN,
     CONF_PLANT_ID,
     CONF_PLANT_NAME,
 )
@@ -44,6 +45,7 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._username: Optional[str] = None
         self._password: Optional[str] = None
+        self._auth_token: Optional[str] = None
         self._api: Optional[SunWegAPI] = None
         self._plants: Dict[str, str] = {}
 
@@ -52,39 +54,51 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: Dict[str, str] = {}
 
         if user_input is not None:
-            # Store credentials to be reused later in the flow
-            self._username = user_input[CONF_USERNAME]
-            self._password = user_input[CONF_PASSWORD]
-            session = aiohttp_client.async_get_clientsession(self.hass)
-            self._api = SunWegAPI(session, self._username, self._password)
-            try:
-                await self._api.async_login()
-                # Fetch available plants to determine whether we need a secondary step
-                self._plants = await self._api.async_get_all_plants()
-                # If there are no plants accessible, abort
-                if not self._plants:
-                    return self.async_abort(reason="no_plants")
-                # If only one plant, skip plant selection
-                if len(self._plants) == 1:
-                    plant_id, plant_name = next(iter(self._plants.items()))
-                    return await self._create_entry(plant_id, plant_name)
-                # Otherwise, continue to plant selection step
-                return await self.async_step_select_plant()
-            except SunWegAuthError:
-                errors["base"] = "auth"
-            except SunWegAPIError:
-                errors["base"] = "cannot_connect"
-            except Exception as err:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected error: %s", err)
-                errors["base"] = "unknown"
+            self._username = (user_input.get(CONF_USERNAME) or "").strip() or None
+            self._password = user_input.get(CONF_PASSWORD) or None
+            self._auth_token = (user_input.get(CONF_AUTH_TOKEN) or "").strip() or None
+
+            if not self._auth_token and not (self._username and self._password):
+                errors["base"] = "missing_auth"
+            else:
+                session = aiohttp_client.async_get_clientsession(self.hass)
+                self._api = SunWegAPI(
+                    session,
+                    self._username,
+                    self._password,
+                    token=self._auth_token,
+                )
+                try:
+                    if not self._auth_token:
+                        await self._api.async_login()
+                        self._auth_token = self._api.token
+                    # Fetch available plants to determine whether we need a secondary step
+                    self._plants = await self._api.async_get_all_plants()
+                    # If there are no plants accessible, abort
+                    if not self._plants:
+                        return self.async_abort(reason="no_plants")
+                    # If only one plant, skip plant selection
+                    if len(self._plants) == 1:
+                        plant_id, plant_name = next(iter(self._plants.items()))
+                        return await self._create_entry(plant_id, plant_name)
+                    # Otherwise, continue to plant selection step
+                    return await self.async_step_select_plant()
+                except SunWegAuthError:
+                    errors["base"] = "auth"
+                except SunWegAPIError:
+                    errors["base"] = "cannot_connect"
+                except Exception as err:  # pylint: disable=broad-except
+                    _LOGGER.exception("Unexpected error: %s", err)
+                    errors["base"] = "unknown"
 
         # Show the credentials form to the user
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
+                    vol.Optional(CONF_USERNAME): str,
+                    vol.Optional(CONF_PASSWORD): str,
+                    vol.Optional(CONF_AUTH_TOKEN): str,
                 }
             ),
             errors=errors,
@@ -110,13 +124,13 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _create_entry(self, plant_id: str, plant_name: str) -> FlowResult:
         """Create the configuration entry after collecting all information."""
-        assert self._username is not None and self._password is not None
         title = f"SunWEG {plant_name}"
         return self.async_create_entry(
             title=title,
             data={
-                CONF_USERNAME: self._username,
-                CONF_PASSWORD: self._password,
+                CONF_USERNAME: self._username or "",
+                CONF_PASSWORD: self._password or "",
+                CONF_AUTH_TOKEN: self._auth_token or "",
                 CONF_PLANT_ID: plant_id,
                 CONF_PLANT_NAME: plant_name,
             },
