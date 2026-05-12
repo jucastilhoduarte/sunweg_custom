@@ -23,6 +23,9 @@ from homeassistant.helpers.selector import (  # type: ignore[attr-defined]
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .const import (
@@ -120,7 +123,9 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Optional(CONF_USERNAME): str,
                     vol.Optional(CONF_PASSWORD): str,
-                    vol.Optional(CONF_AUTH_TOKEN): str,
+                    vol.Optional(CONF_AUTH_TOKEN): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
+                    ),
                 }
             ),
             errors=errors,
