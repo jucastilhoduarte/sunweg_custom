@@ -92,6 +92,8 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if not self._auth_token:
                         await self._api.async_login()
                         self._auth_token = self._api.token
+                    else:
+                        await self._api.async_validate_token()
                     # Fetch available plants to determine whether we need a secondary step
                     self._plants = await self._api.async_get_all_plants()
                     # If there are no plants accessible, abort

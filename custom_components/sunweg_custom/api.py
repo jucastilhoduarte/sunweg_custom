@@ -151,6 +151,13 @@ class SunWegAPI:
                             )
                 else:
                     if resp.status >= 400:
+                        text = await resp.text()
+                        _LOGGER.warning(
+                            "SunWEG API returned HTTP %s for %s: %s",
+                            resp.status,
+                            endpoint,
+                            text[:200],
+                        )
                         raise SunWegAPIError(f"HTTP {resp.status} when fetching {endpoint}")
                     try:
                         data = await resp.json()
@@ -168,6 +175,12 @@ class SunWegAPI:
             raise SunWegAPIError(f"Unexpected response from {endpoint}: {ex}") from ex
 
         return data
+
+    async def async_validate_token(self) -> None:
+        """Validate the current token with a lightweight authenticated endpoint."""
+        data = await self._get_json("/get/version/activate")
+        if not data.get("success", True):
+            raise SunWegAuthError("Session token was rejected by SunWEG")
 
     async def async_get_resumo(self, plant_id: str) -> Dict[str, Any]:
         """Fetch summary data (energy, power, capacity) for a given plant.
@@ -189,7 +202,7 @@ class SunWegAPI:
             "usina": "",
             "id": "",
             "situacao": "null",
-            "limite": 100,
+            "limite": 12,
             "quantidade": 0,
             "paginaAtual": 1,
             "agrupado": "false",
@@ -219,7 +232,7 @@ class SunWegAPI:
             "usina": "",
             "id": "",
             "situacao": "null",
-            "limite": 100,
+            "limite": 12,
             "quantidade": 0,
             "paginaAtual": 1,
             "agrupado": "false",
