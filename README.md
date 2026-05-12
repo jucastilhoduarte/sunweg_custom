@@ -44,7 +44,7 @@ Este repositório contém uma integração **não oficial** para o [Home Assist
 ## Como funciona
 
 - **Autenticação:** a integração pode usar os endpoints de login da API SunWEG para autenticar com seu e-mail e senha, ou reutilizar um token obtido após login manual no portal. Nas chamadas de dados, o valor é enviado no header `X-Auth-Token-Update`.
-- **Login manual:** se o portal exigir verificação humana no login, faça o login normalmente no navegador com **permanecer conectado** marcado e copie o valor do header `X-Auth-Token-Update` de uma chamada para `https://api.sunweg.net/v2/...` nas ferramentas de desenvolvedor. Cole esse valor no campo **Token de sessão** do fluxo de configuração.
+- **Login manual:** se o portal exigir verificação humana no login, faça o login normalmente no navegador com **permanecer conectado** marcado e copie o valor do header `X-Auth-Token-Update` de uma chamada para `https://api.sunweg.net/v2/...` nas ferramentas de desenvolvedor. Cole esse valor no campo **Token de sessão** do fluxo de configuração; a integração também aceita o header completo colado nesse campo.
 - **Coordenador de dados:** um [DataUpdateCoordinator](https://developers.home-assistant.io/docs/data_update_coordinator_index/) gerencia as chamadas periódicas à API (intervalo padrão de 5 minutos), tratando erros de conexão e renovação do token.
 - **Criação de sensores:** após a primeira atualização, a integração cria entidades do tipo `sensor` com base nas métricas retornadas pela API, utilizando classes de dispositivo e unidades apropriadas.
 

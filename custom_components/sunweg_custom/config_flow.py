@@ -10,6 +10,7 @@ select which photovoltaic plant they wish to monitor.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
@@ -37,6 +38,24 @@ from .api import SunWegAPI, SunWegAuthError, SunWegAPIError
 _LOGGER = logging.getLogger(__name__)
 
 
+def _normalize_auth_token(value: str) -> str:
+    """Accept common copied token formats and return only the JWT value."""
+    token = value.strip().strip('"').strip("'")
+    if not token:
+        return ""
+
+    jwt_match = re.search(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", token)
+    if jwt_match:
+        return jwt_match.group(0)
+
+    lowered = token.lower()
+    for prefix in ("x-auth-token-update:", "authorization:", "bearer "):
+        if lowered.startswith(prefix):
+            token = token[len(prefix):].strip().strip('"').strip("'")
+            break
+    return token
+
+
 class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SunWEG."""
 
@@ -56,7 +75,8 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._username = (user_input.get(CONF_USERNAME) or "").strip() or None
             self._password = user_input.get(CONF_PASSWORD) or None
-            self._auth_token = (user_input.get(CONF_AUTH_TOKEN) or "").strip() or None
+            raw_auth_token = user_input.get(CONF_AUTH_TOKEN) or ""
+            self._auth_token = _normalize_auth_token(raw_auth_token) or None
 
             if not self._auth_token and not (self._username and self._password):
                 errors["base"] = "missing_auth"

@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp
 
-from .const import API_BASE_URL, HEADER_USER_AGENT
+from .const import API_BASE_URL, HEADER_USER_AGENT, PORTAL_BASE_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +26,9 @@ class SunWegAPIError(Exception):
 
 class SunWegAuthError(SunWegAPIError):
     """Raised when authentication fails or the token has expired."""
+
+
+AUTH_ERROR_STATUSES = {401, 403}
 
 
 class SunWegAPI:
@@ -71,6 +74,8 @@ class SunWegAPI:
             "Content-Type": "application/json;charset=UTF-8",
             "Accept": "application/json, text/plain, */*",
             "User-Agent": HEADER_USER_AGENT,
+            "Origin": PORTAL_BASE_URL,
+            "Referer": f"{PORTAL_BASE_URL}/sign-in",
         }
         try:
             async with self._session.post(url, json=payload, headers=headers) as resp:
@@ -96,6 +101,8 @@ class SunWegAPI:
         return {
             "Accept": "application/json, text/plain, */*",
             "User-Agent": HEADER_USER_AGENT,
+            "Origin": PORTAL_BASE_URL,
+            "Referer": f"{PORTAL_BASE_URL}/",
             "X-Auth-Token-Update": self._token,
         }
 
@@ -117,8 +124,8 @@ class SunWegAPI:
         headers = self._auth_headers()
         try:
             async with self._session.get(url, headers=headers, params=params) as resp:
-                # If unauthorized, refresh the token once and retry
-                if resp.status == 401:
+                # If unauthorized, refresh the token once and retry when credentials exist.
+                if resp.status in AUTH_ERROR_STATUSES:
                     if not self._username or not self._password:
                         raise SunWegAuthError(
                             "Stored token has expired and no credentials are available"
@@ -127,6 +134,10 @@ class SunWegAPI:
                     await self.async_login()
                     headers = self._auth_headers()
                     async with self._session.get(url, headers=headers, params=params) as retry_resp:
+                        if retry_resp.status in AUTH_ERROR_STATUSES:
+                            raise SunWegAuthError(
+                                f"Authentication failed when fetching {endpoint}"
+                            )
                         if retry_resp.status >= 400:
                             raise SunWegAPIError(
                                 f"HTTP {retry_resp.status} when fetching {endpoint}"

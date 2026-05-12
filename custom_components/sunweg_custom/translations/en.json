@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Configure SunWEG",
-        "description": "Enter your SunWEG credentials or paste a token obtained after a manual SunWEG portal login. For manual tokens, use the X-Auth-Token-Update header value.",
+        "description": "Enter your SunWEG credentials or paste a token obtained after a manual SunWEG portal login. You can paste either the value or the full X-Auth-Token-Update header.",
         "data": {
           "username": "Email",
           "password": "Password",

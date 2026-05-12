@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Configurar SunWEG",
-        "description": "Informe e-mail/senha ou cole um token obtido após login manual no portal SunWEG. Para token manual, use o valor do header X-Auth-Token-Update.",
+        "description": "Informe e-mail/senha ou cole um token obtido após login manual no portal SunWEG. Você pode colar o valor ou o header completo X-Auth-Token-Update.",
         "data": {
           "username": "E-mail",
           "password": "Senha",

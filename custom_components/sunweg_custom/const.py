@@ -21,5 +21,6 @@ CONF_PLANT_NAME: str = "plant_name"
 DEFAULT_SCAN_INTERVAL: timedelta = timedelta(minutes=5)
 
 API_BASE_URL: str = "https://api.sunweg.net/v2"
+PORTAL_BASE_URL: str = "https://sun.weg.net"
 
 HEADER_USER_AGENT: str = "Mozilla/5.0"
