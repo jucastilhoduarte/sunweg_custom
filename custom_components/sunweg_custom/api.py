@@ -182,46 +182,6 @@ class SunWegAPI:
         if not data.get("success", True):
             raise SunWegAuthError("Session token was rejected by SunWEG")
 
-    async def async_get_resumo(self, plant_id: str) -> Dict[str, Any]:
-        """Fetch summary data (energy, power, capacity) for a given plant.
-
-        Args:
-            plant_id: Identifier of the plant (usina) to filter.
-
-        Returns:
-            A dictionary containing the summary information for the plant. If
-            multiple plants are returned the first matching entry is used.
-
-        The API for ``getdadosresumo`` appears unstable when queried with
-        explicit plant parameters (usina or id). To avoid server errors, this
-        method requests all plants and filters locally. Should the API
-        stabilise in the future, a more targeted call can be reinstated.
-        """
-        # Fetch all plants to avoid API 500 errors when filtering by id.
-        params = {
-            "usina": "",
-            "id": "",
-            "situacao": "null",
-            "limite": 12,
-            "quantidade": 0,
-            "paginaAtual": 1,
-            "agrupado": "false",
-            "gettotalizadores": "false",
-        }
-        data = await self._get_json("/getdadosresumo", params=params)
-        if not data.get("success"):
-            raise SunWegAPIError(f"Failed to fetch summary: {data}")
-        usinas = data.get("usinas", [])
-        # Find the matching plant; fallback to first entry if none explicitly match
-        plant_summary: Optional[Dict[str, Any]] = None
-        for u in usinas:
-            if str(u.get("id")) == str(plant_id):
-                plant_summary = u
-                break
-        if plant_summary is None and usinas:
-            plant_summary = usinas[0]
-        return plant_summary or {}
-
     async def async_get_all_plants(self) -> Dict[str, Any]:
         """Retrieve a mapping of plant IDs to their names.
 
@@ -232,7 +192,7 @@ class SunWegAPI:
             "usina": "",
             "id": "",
             "situacao": "null",
-            "limite": 12,
+            "limite": 100,
             "quantidade": 0,
             "paginaAtual": 1,
             "agrupado": "false",
@@ -248,14 +208,21 @@ class SunWegAPI:
                     plants[str(pid)] = name
         return plants
 
-    async def async_get_totalizadores(self) -> Dict[str, Any]:
-        """Fetch aggregated totals across all plants.
+    async def async_get_viewresumov2(self, plant_id: str) -> Dict[str, Any]:
+        """Fetch detailed plant data from the viewresumov2 endpoint.
+
+        Args:
+            plant_id: Identifier of the plant (usina).
 
         Returns:
-            A dictionary containing various aggregated metrics such as total
-            energy generated and power currently being produced.
+            A dictionary containing detailed plant data, including the
+            ``ultimaleitura`` timestamp of the most recent inverter reading.
         """
-        data = await self._get_json("/gettotalizadores")
+        data = await self._get_json(
+            "/viewresumov2", params={"id": plant_id, "agrupado": "false"}
+        )
         if not data.get("success"):
-            raise SunWegAPIError(f"Failed to fetch totalizers: {data}")
-        return data.get("dados", {})
+            raise SunWegAPIError(
+                f"Failed to fetch viewresumov2 for plant {plant_id}: {data}"
+            )
+        return data

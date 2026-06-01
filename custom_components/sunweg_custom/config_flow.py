@@ -139,7 +139,10 @@ class SunWegConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self._create_entry(plant_id, plant_name)
 
         # Present a dropdown selector with all available plants
-        options = list(self._plants.keys())
+        options = [
+            {"value": pid, "label": f"{pid} - {name}"}
+            for pid, name in self._plants.items()
+        ]
         selector = SelectSelector(
             SelectSelectorConfig(options=options, mode=SelectSelectorMode.DROPDOWN)
         )

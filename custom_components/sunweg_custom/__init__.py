@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict
 
 from homeassistant.config_entries import ConfigEntry
@@ -76,20 +77,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_update_data() -> Dict[str, Any]:
         """Fetch the latest data from SunWEG for the configured plant."""
         try:
-            # Fetch plant-specific summary
-            resumo = await api.async_get_resumo(plant_id)
-            # Fetch aggregated totals
-            totalizers = await api.async_get_totalizadores()
+            data = await api.async_get_viewresumov2(plant_id)
+            # Parse last reading timestamp into a timezone-aware datetime
+            ul_raw = data.get("ultimaleitura")
+            if ul_raw:
+                try:
+                    data["_ultimaleitura_dt"] = parsedate_to_datetime(ul_raw)
+                except Exception:  # pylint: disable=broad-except
+                    data["_ultimaleitura_dt"] = None
+            return data
         except SunWegAuthError as err:
             # Authentication error implies token expiry; raise UpdateFailed to trigger a retry
             _LOGGER.warning("Authentication failure during update: %s", err)
             raise UpdateFailed("Authentication failure") from err
         except SunWegAPIError as err:
             raise UpdateFailed(f"API error: {err}") from err
-        return {
-            "resumo": resumo,
-            "totalizers": totalizers,
-        }
 
     coordinator = DataUpdateCoordinator(
         hass,
