@@ -5,12 +5,33 @@ All sensors belong to a single device per plant and read data exclusively
 from the viewresumov2 API endpoint, which provides energy totals, current
 power, inverter readings, environmental metrics, financial savings and status
 information in a single response.
+
+State updates follow the standard coordinator polling cadence. The
+plant_last_reading sensor is provided as a reference only and does not gate
+updates for any other sensor.
+
+State-class and reset behaviour summary
+────────────────────────────────────────
+Sensor                  state_class          Resets?
+plant_energy_day        TOTAL                Every day   → HA handles resets
+plant_energy_month      TOTAL                Every month → HA handles resets
+plant_energy_year       TOTAL                Every year  → HA handles resets
+plant_energy_total      TOTAL_INCREASING     Never       → monotonically grows
+plant_power             MEASUREMENT          Instantaneous (goes to 0 at night)
+plant_savings_today     TOTAL                Every day   → HA handles resets
+plant_savings_total     TOTAL                Never (MONETARY only allows TOTAL)
+plant_co2_avoided       TOTAL_INCREASING     Never       → monotonically grows
+plant_trees_planted     TOTAL_INCREASING     Never       → monotonically grows
+plant_km_electric       TOTAL_INCREASING     Never       → monotonically grows
+plant_yield_day/month   MEASUREMENT          Instantaneous performance ratio
+Inverter readings       MEASUREMENT          Instantaneous electrical readings
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -104,7 +125,7 @@ SENSORS: list[SunWegSensorDescription] = [
         name="Energia gerada hoje",
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         icon="mdi:solar-power",
         value_fn=lambda d: _parse_numeric(
             d.get("eday_usina"), {"MWh": 1000.0, "kWh": 1.0}
@@ -115,7 +136,7 @@ SENSORS: list[SunWegSensorDescription] = [
         name="Energia gerada no mês",
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         icon="mdi:solar-power",
         value_fn=lambda d: d.get("emonth"),
     ),
@@ -124,7 +145,7 @@ SENSORS: list[SunWegSensorDescription] = [
         name="Energia gerada no ano",
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         icon="mdi:solar-power",
         value_fn=lambda d: d.get("eyear"),
     ),
@@ -187,7 +208,7 @@ SENSORS: list[SunWegSensorDescription] = [
         key="plant_trees_planted",
         name="Árvores plantadas",
         native_unit_of_measurement="árvore(s)",
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:tree",
         value_fn=lambda d: d.get("arvores_plantadas"),
     ),
@@ -195,7 +216,7 @@ SENSORS: list[SunWegSensorDescription] = [
         key="plant_km_electric",
         name="Quilômetros elétricos",
         native_unit_of_measurement="km",
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:car-electric",
         value_fn=lambda d: d.get("km_rodado_eletrico"),
     ),
@@ -205,7 +226,7 @@ SENSORS: list[SunWegSensorDescription] = [
         name="Economia hoje",
         native_unit_of_measurement="BRL",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         icon="mdi:cash",
         value_fn=lambda d: d.get("economia_hoje"),
     ),
@@ -214,7 +235,7 @@ SENSORS: list[SunWegSensorDescription] = [
         name="Economia total",
         native_unit_of_measurement="BRL",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         icon="mdi:cash",
         value_fn=lambda d: d.get("economia"),
     ),
@@ -278,6 +299,8 @@ SENSORS: list[SunWegSensorDescription] = [
         name="Última leitura",
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-outline",
+        # _ultimaleitura_dt is computed in __init__.py using the plant_tz
+        # offset from the API, which corrects the misleading "GMT" label.
         value_fn=lambda d: d.get("_ultimaleitura_dt"),
     ),
 ]
@@ -318,16 +341,19 @@ class SunWegSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"sunweg_{plant_id}_{description.key}"
         self._attr_has_entity_name = True
         self._attr_name = description.name
-        # Tracks the last seen inverter reading timestamp so we only push a
-        # state update to HA when the inverter actually produced new data.
-        self._last_inverter_ts: Any = None
 
-    def _handle_coordinator_update(self) -> None:
-        """Write state only when the inverter reading timestamp has advanced."""
-        new_ts = (self.coordinator.data or {}).get("_ultimaleitura_dt")
-        if new_ts != self._last_inverter_ts:
-            self._last_inverter_ts = new_ts
-            self.async_write_ha_state()
+    def _is_nighttime(self) -> bool:
+        """Return True when the local plant time is between 20:00 and 08:00.
+
+        The offset is read from plant_tz (integer hours, e.g. -3 for BRT)
+        which the API returns alongside every data payload.  If the field is
+        absent we fall back to UTC, which is conservative: a missed alert is
+        better than silencing real ones.
+        """
+        plant_tz_hours = int((self.coordinator.data or {}).get("plant_tz") or 0)
+        tz = timezone(timedelta(hours=plant_tz_hours))
+        hour = datetime.now(tz=tz).hour
+        return hour < 8 or hour >= 20
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -341,13 +367,32 @@ class SunWegSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> Any:
-        """Return the current state of this sensor."""
-        return self.entity_description.value_fn(self.coordinator.data or {})
+        """Return the current state of this sensor.
+
+        Numeric sensors (those with a unit of measurement) fall back to 0
+        instead of returning None so HA never shows an 'unknown' state.
+
+        The problems sensor always reports 0 at night: the inverter produces
+        false alerts (zero power, no updates) when there is no sunlight, so
+        those readings are meaningless outside of daylight hours.
+        """
+        if self.entity_description.key == "plant_problems" and self._is_nighttime():
+            return 0
+        value = self.entity_description.value_fn(self.coordinator.data or {})
+        if value is None and self.entity_description.native_unit_of_measurement is not None:
+            return 0
+        return value
 
     @property
     def extra_state_attributes(self) -> Optional[dict[str, Any]]:
-        """Return extra attributes when an attr_fn is defined for this sensor."""
+        """Return extra attributes when an attr_fn is defined for this sensor.
+
+        Problem messages are suppressed at night for the same reason as
+        native_value: inverter alerts are meaningless without sunlight.
+        """
         if self.entity_description.attr_fn is None:
+            return None
+        if self.entity_description.key == "plant_problems" and self._is_nighttime():
             return None
         result = self.entity_description.attr_fn(self.coordinator.data or {})
         if result is None:

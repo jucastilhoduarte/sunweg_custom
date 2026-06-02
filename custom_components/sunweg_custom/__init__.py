@@ -4,13 +4,19 @@ The top-level initialization for the SunWEG integration.
 This file sets up the integration within Home Assistant, managing the
 communication with the remote API via an update coordinator and exposing
 sensor entities for energy production, power and other metrics.
+
+Timestamp note: the SunWEG API returns the inverter's last-reading timestamp
+with a misleading "GMT" suffix (e.g. "Tue, 02 Jun 2026 08:59:19 GMT"). The
+time is actually in the plant's local timezone, which the same API response
+provides as the integer field ``plant_tz`` (hours offset from UTC, e.g. -3).
+We discard the "GMT" label and attach the correct offset so HA stores the
+right UTC-equivalent value.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
-from email.utils import parsedate_to_datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from homeassistant.config_entries import ConfigEntry
@@ -78,11 +84,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Fetch the latest data from SunWEG for the configured plant."""
         try:
             data = await api.async_get_viewresumov2(plant_id)
-            # Parse last reading timestamp into a timezone-aware datetime
+            # Parse the inverter's last-reading timestamp into a
+            # timezone-aware datetime.  The API labels the value as "GMT" but
+            # the actual offset is given by the plant_tz field (integer hours,
+            # e.g. -3 for BRT).  We strip the bogus "GMT" suffix and replace
+            # it with the real offset so HA receives the correct UTC time.
             ul_raw = data.get("ultimaleitura")
             if ul_raw:
                 try:
-                    data["_ultimaleitura_dt"] = parsedate_to_datetime(ul_raw)
+                    plant_tz_hours = int(data.get("plant_tz") or 0)
+                    tz = timezone(timedelta(hours=plant_tz_hours))
+                    raw_no_tz = ul_raw.rsplit(" ", 1)[0]  # strip trailing "GMT"
+                    naive_dt = datetime.strptime(raw_no_tz, "%a, %d %b %Y %H:%M:%S")
+                    data["_ultimaleitura_dt"] = naive_dt.replace(tzinfo=tz)
                 except Exception:  # pylint: disable=broad-except
                     data["_ultimaleitura_dt"] = None
             return data
