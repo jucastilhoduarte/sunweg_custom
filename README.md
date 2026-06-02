@@ -50,7 +50,9 @@ Este repositório contém uma integração **não oficial** para o [Home Assista
     {% endfor %}
   ```
 
-- **`last_updated` honesto**: o HA só avança o timestamp de atualização de cada sensor quando o inversor produz uma leitura nova (campo `ultimaleitura` da API). Polls que retornam os mesmos dados não atualizam o histórico.
+- **Supressão de problemas à noite**: entre 20h e 08h no horário local da usina, o sensor de problemas retorna automaticamente `0` (sem atributo `mensagens`). Isso evita falsos alertas do inversor como "Potência zerada" e "Sem Coleta" que são esperados durante a noite quando não há geração solar.
+
+- **Correção de fuso horário**: a API retorna o timestamp da última leitura com o sufixo `GMT`, porém o horário reflete o fuso local da usina. A integração usa o campo `plant_tz` da própria resposta da API (ex.: `-3` para BRT) para aplicar o offset correto, garantindo que o sensor **Última leitura** exiba o horário real no Home Assistant.
 
 ## Instalação
 
