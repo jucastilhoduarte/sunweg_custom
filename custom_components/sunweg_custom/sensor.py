@@ -6,9 +6,12 @@ from the viewresumov2 API endpoint, which provides energy totals, current
 power, inverter readings, environmental metrics, financial savings and status
 information in a single response.
 
-State updates follow the standard coordinator polling cadence. The
-plant_last_reading sensor is provided as a reference only and does not gate
-updates for any other sensor.
+State updates are gated on the inverter's reading timestamp
+(``_ultimaleitura_dt``): sensors only write a new HA state when the API
+returns a newer ``ultimaleitura`` value.  This keeps HA's ``last_changed``
+and ``last_updated`` aligned with the actual data-collection time rather
+than the arbitrary 5-minute polling cadence.
+The plant_last_reading sensor is provided as a reference only.
 
 State-class and reset behaviour summary
 ────────────────────────────────────────
@@ -341,6 +344,32 @@ class SunWegSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"sunweg_{plant_id}_{description.key}"
         self._attr_has_entity_name = True
         self._attr_name = description.name
+        # Tracks the last inverter reading timestamp seen so we can skip
+        # state writes when the API data has not advanced.
+        self._last_seen_reading_dt: Optional[datetime] = None
+
+    def _handle_coordinator_update(self) -> None:
+        """Write HA state only when the inverter has published a new reading.
+
+        The coordinator still polls the API every 5 minutes, but the inverter
+        may not have updated its payload between polls.  By comparing the
+        current ``_ultimaleitura_dt`` with the previously seen value we avoid
+        writing duplicate state entries, which keeps HA's ``last_changed`` and
+        ``last_updated`` aligned with the actual data-collection time rather
+        than the arbitrary polling moment.
+
+        Coordinator errors (``last_update_success=False``) are always
+        propagated so entities are correctly marked unavailable.
+        """
+        if not self.coordinator.last_update_success:
+            self.async_write_ha_state()
+            return
+        data = self.coordinator.data or {}
+        reading_dt = data.get("_ultimaleitura_dt")
+        if reading_dt == self._last_seen_reading_dt:
+            return
+        self._last_seen_reading_dt = reading_dt
+        self.async_write_ha_state()
 
     def _is_nighttime(self) -> bool:
         """Return True when the local plant time is between 20:00 and 08:00.
